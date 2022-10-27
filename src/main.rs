@@ -1,13 +1,13 @@
 use std::f32::consts::PI;
 use image::{DynamicImage, GenericImageView};
 use rand::Rng;
-use num::traits::real;
+use num::{traits::real, Float};
+use ndarray::{arr2, OwnedRepr, Array2};
 
 fn double_syn(x: i32, y: i32) -> f32{
     let x_f = x as f32;
     let y_f = y as f32;
     let mut rng = rand::thread_rng();
-    let n1: f32 = rng.gen();
     //return n1;
     return 122.0 * x_f.sin() + 122.0 * y_f.sin();
 }
@@ -24,47 +24,46 @@ fn generate_numbers(x: Vec<i32>, y: Vec<i32>, f: &dyn Fn(i32, i32) -> f32) -> Ve
     return res;
 }
 
-fn exp_euler(k: f32, l: f32, m: f32, n: f32, M: f32, N: f32) -> num::complex::Complex32{
-    let mut real_part = 0.0;
-    let mut im_part = 0.0;
-    real_part = 2.0 * PI * (((k * m / M) + (l * n /N)) as f32);
+
+
+fn create_matrix(size: usize) -> ndarray::Array2::<num::complex::Complex32>{
+    let mut F = ndarray::Array2::<num::complex::Complex32>::default((size, size));
+    for (j, mut row) in F.axis_iter_mut(ndarray::Axis(0)).enumerate(){
+        for (k, col) in row.iter_mut().enumerate(){
+            *col = exp_matrix(j as f32, k as f32, size as f32);
+        }
+    }
+    return F;
+}
+
+fn vec_to_ndarray(input: Vec<Vec<f32>>) -> ndarray::Array2::<num::complex::Complex32>{
+    let shape = (input.len(), input[0].len());
+    let mut res = ndarray::Array2::<num::complex::Complex32>::default(shape);
+    for (i, mut row) in res.axis_iter_mut(ndarray::Axis(0)).enumerate() {
+        for (j, col) in row.iter_mut().enumerate() {
+            *col = num::complex::Complex32::new(input[i][j], 0.0);
+        }
+    }
+    return res;
+}
+
+fn exp_matrix(j: f32, k: f32, N: f32) -> num::complex::Complex32{
+    let mut real_part = 2.0 * PI * j * k / N;
     real_part = real_part.cos();
-    im_part = 2.0 * PI * (((k * m / M) + (l * n /N)) as f32);
-    im_part = -1.0 * im_part.sin();
+    let mut im_part = -2.0 * PI * j * k / N;
+    im_part = im_part.sin();
     let res = num::complex::Complex::new(real_part, im_part);
     return res;
 }
 
-fn dft_single_value(input: &Vec<Vec<f32>>, k: usize, l: usize, M: f32, N: f32) -> num::complex::Complex32{
-    let mut res = num::complex::Complex::new(0.0, 0.0);
-    for (m, row) in input.iter().enumerate(){
-        let mut cur_res = num::complex::Complex::new(0.0, 0.0);
-        for (n, col) in row.iter().enumerate(){
-            cur_res += col * exp_euler(
-                k as f32,
-                l as f32, 
-                m as f32, 
-                n as f32, 
-                M as f32, 
-                N as f32);
-        }
-        res += cur_res;
-    }
-    return res;
-}
-
-fn dft(input: &Vec<Vec<f32>>) -> Vec<Vec<num::complex::Complex32>>{
-    let M = input.len() as f32;
-    let N = input[0].len() as f32;
-    let factorMN = 1.0 / (M * N);
-    let mut res: Vec<Vec<num::complex::Complex32>> = vec![vec![num::complex::Complex::new(0.0, 0.0); input.len()]; input[0].len()];
-    for (k, row) in input.iter().enumerate(){
-        println!("k {}", k);
-        for (l, col) in row.iter().enumerate(){
-            println!("l {}", l);
-            res[k][l] = factorMN * dft_single_value(&input, k, l, M, N);
-        }
-    }
+fn dft(input: &ndarray::Array2::<num::complex::Complex32>) -> ndarray::Array2::<num::complex::Complex32>{
+    let shape = input.shape();
+    let M = shape[0];
+    let N =shape[1];
+    let F_M = create_matrix(M as usize);
+    let F_N = create_matrix(N as usize);
+    let mut res = F_M.dot(input);
+    res = res.dot(&F_N);
     return res;
 }
 
@@ -81,27 +80,54 @@ fn image_to_vec(img: DynamicImage) -> Vec<Vec<f32>>{
     return res;
 }
 
-fn main() {
- let x: Vec<i32> = (0..100).collect();
- let y: Vec<i32> = (0..50).collect();
- let mut img_orig: image::GrayImage = image::ImageBuffer::new(x.len().try_into().unwrap(), y.len().try_into().unwrap());
- let mut img_dft_real: image::GrayImage = image::ImageBuffer::new(x.len().try_into().unwrap(), y.len().try_into().unwrap());
- let mut img_dft_im: image::GrayImage = image::ImageBuffer::new(x.len().try_into().unwrap(), y.len().try_into().unwrap());
- let test = generate_numbers(x, y, &double_syn);
- //let img = image_to_vec(image::open("G1-OC4ljwCc.jpg").unwrap().grayscale());
- let test_dft = dft(&test);
- for (r, row) in test.iter().enumerate(){
-    for (c, col) in row.iter().enumerate(){
-        let pix_val = (*col * 255.0) as u8;
-        let pix_val_real = (test_dft[r][c].re * 255.0) as u8;
-        let pix_val_im = (test_dft[r][c].im * 255.0) as u8;
-        img_orig.put_pixel(r.try_into().unwrap(), c.try_into().unwrap(), image::Luma([pix_val]));
-        img_dft_real.put_pixel(r.try_into().unwrap(), c.try_into().unwrap(), image::Luma([pix_val_real]));
-        img_dft_im.put_pixel(r.try_into().unwrap(), c.try_into().unwrap(), image::Luma([pix_val_im]));
+fn prep_magnitude(input: &ndarray::Array2::<num::complex::Complex32>) -> (ndarray::Array2::<f32>, f32, f32){
+    let shape = (input.shape()[0], input.shape()[1]);
+    let mut res = ndarray::Array2::<f32>::default(shape);
+    let mut max: f32 = 0.0;
+    let mut min: f32 = 0.0;
+    for (i, mut row) in res.axis_iter_mut(ndarray::Axis(0)).enumerate() {
+        for (j, col) in row.iter_mut().enumerate() {
+            let curr = (1.0 + input[[i, j]].norm()).log2();
+            if curr > max{
+                max = curr;
+            } else if curr < min{
+                min = curr;
+            }
+            *col = curr;
+        }
     }
- }
+    return (res, max, min);
+}
 
- img_orig.save("orig.png").unwrap();
- img_dft_real.save("real.png").unwrap();
- img_dft_im.save("im.png").unwrap();
+fn normalize_magnitude(min: f32, max: f32, value: f32) ->f32{
+    let res = (value - min)* (255.0/(max - min));
+    return res;
+
+}
+
+fn process_image(path: &str){
+    let img = image_to_vec(image::open(path).unwrap().grayscale());
+    let mut res_img: image::GrayImage = image::ImageBuffer::new((img.len()*2).try_into().unwrap(), img[0].len().try_into().unwrap());
+    let img_nd = vec_to_ndarray(img.clone());
+    let test_dft = dft(&img_nd);
+    let (mag_dft, max, min )= prep_magnitude(&test_dft);
+    for (r, row) in img.iter().enumerate(){
+       for (c, col) in row.iter().enumerate(){
+           let pix_val = *col as u8;
+           let pix_val_mgntd = normalize_magnitude(min, max, mag_dft[[r, c]]) as u8;
+           res_img.put_pixel(r.try_into().unwrap(), c.try_into().unwrap(), image::Luma([pix_val]));
+           res_img.put_pixel(
+            (img.len() + (r + img.len()/2)%(img.len())).try_into().unwrap(),
+            ((c + img[0].len()/2)%(img[0].len())).try_into().unwrap(),
+           
+         image::Luma([pix_val_mgntd]));
+       }
+    }
+    let res_path = "res_".to_owned() + path;
+    res_img.save(res_path).unwrap();
+}
+
+fn main() {
+    let path = "230.jpg";
+    process_image(path);
 }
