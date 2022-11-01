@@ -2,8 +2,8 @@ import subprocess
 import tqdm
 import matplotlib.pyplot as plt
 
-PATH_1 = "target/release/parallel.exe"
-PATH_2 = "target/release/nonparallel.exe"
+PATH_1 = "target/release/parallel"
+PATH_2 = "target/release/nonparallel"
 
 def main():
     sample_size = 10

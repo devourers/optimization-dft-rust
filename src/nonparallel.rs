@@ -56,9 +56,17 @@ fn vec_to_ndarray(input: Vec<Vec<f32>>) -> ndarray::Array2::<num::complex::Compl
 
 fn exp_matrix(j: f32, k: f32, N: f32) -> num::complex::Complex32{
     let mut real_part = 2.0 * PI * j * k / N;
-    real_part = real_part.cos();
-    let mut im_part = -2.0 * PI * j * k / N;
-    im_part = im_part.sin();
+    if real_part>0.55{
+        real_part = real_part.cos();
+    }
+    else{
+        real_part = 1.0 - real_part*real_part;
+    }
+    let mut im_part = 2.0 * PI * j * k / N;
+    if im_part>0.23{
+        im_part = im_part.sin();
+    }
+    im_part = -1.0 * im_part;
     let res = num::complex::Complex::new(real_part, im_part);
     return res;
 }
