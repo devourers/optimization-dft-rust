@@ -1,8 +1,10 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, ops::Index};
 use image::{DynamicImage, GenericImageView};
-use rand::Rng;
+use ndarray::parallel::prelude::{IntoParallelIterator, ParallelIterator};
 use num::{traits::real, Float};
-use ndarray::{arr2, OwnedRepr, Array2};
+
+const THREADS: usize = 4;
+
 
 fn double_syn(x: i32, y: i32) -> f32{
     let x_f = x as f32;
@@ -33,11 +35,11 @@ fn create_test_image(size: i32, f: &dyn Fn(i32, i32) -> f32) -> ndarray::Array2:
 
 fn create_matrix(size: usize) -> ndarray::Array2::<num::complex::Complex32>{
     let mut F = ndarray::Array2::<num::complex::Complex32>::default((size, size));
-    for (j, mut row) in F.axis_iter_mut(ndarray::Axis(0)).enumerate(){
+    ndarray::Zip::indexed(F.outer_iter_mut()).par_for_each(|j, mut row| {
         for (k, col) in row.iter_mut().enumerate(){
             *col = exp_matrix(j as f32, k as f32, size as f32);
         }
-    }
+    });
     return F;
 }
 
